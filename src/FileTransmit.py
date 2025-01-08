@@ -6,6 +6,8 @@ import zipfile
 import io
 from datetime import datetime
 import json
+import uuid
+from simple_graph_sqlite import database as sg_db
 
 from fastapi import HTTPException, BackgroundTasks
 from fastapi import APIRouter, File, UploadFile, HTTPException
@@ -21,13 +23,23 @@ file_router = APIRouter()
 def get_or_create_workspace(username: str) -> str:
     """
     Ensures the workspace directory for a given username exists.
-    Creates the directory if it doesn't exist.
+    Creates the directory and initializes SQLite database if it doesn't exist.
     """
     workspace_path = os.path.join('./workspace/', username)
     if not os.path.exists(workspace_path):
         os.makedirs(workspace_path)
         print(f"Created workspace for {username} at {workspace_path}")
+        
+        # Initialize SQLite database
+        db_path = os.path.join(workspace_path, 'graphs.db')
+        sg_db.initialize(db_path)
+        
     return workspace_path
+
+def get_db_path(username: str) -> str:
+    """Get SQLite database file path for the user"""
+    workspace_path = get_or_create_workspace(username)
+    return os.path.join(workspace_path, 'graphs.db')
 
 
 @file_router.get('/download/{username}')
@@ -79,24 +91,109 @@ async def upload_file(username: str, files: List[UploadFile] = File(...)):
     
     return JSONResponse(content={"message": "Files successfully uploaded"}, status_code=200)
 
-# Route to handle saving graph data as JSON with username
-@file_router.post('/save-graph/{username}')
-async def save_graph(username: str, graph_data: dict):
+@file_router.post('/graph/{username}')
+async def post_graph(username: str, graph_data: dict):
+    """
+    Save a new graph to the database
+    Returns the UUID of the saved graph
+    """
     try:
-        # Get or create the user's workspace
-        user_workspace = get_or_create_workspace(username)
-
-        # Save the JSON data to a file in the user's workspace
-        graph_file_path = os.path.join(user_workspace, 'graph.json')
-        with open(graph_file_path, 'w') as graph_file:
-            json.dump(graph_data, graph_file, indent=2)
-
-        print(f"Graph data saved to {graph_file_path}")
-        return JSONResponse(content={"message": "Graph data successfully saved"}, status_code=200)
-
+        db_path = get_db_path(username)
+        
+        # Generate UUID for new graph
+        graph_uuid = str(uuid.uuid4())
+        
+        # Save nodes
+        nodes = graph_data.get('nodes', [])
+        node_ids = [str(uuid.uuid4()) for _ in nodes]
+        node_bodies = [{
+            **node,
+            'graph_uuid': graph_uuid,
+            'node_id': node_ids[i]
+        } for i, node in enumerate(nodes)]
+        
+        # Save edges
+        edges = []
+        for i, node in enumerate(nodes):
+            for next_id in node.get('nexts', []):
+                edges.append({
+                    'source': node_ids[i],
+                    'target': next_id,
+                    'properties': {}
+                })
+        
+        # Save to database
+        sg_db.atomic(db_path, sg_db.add_nodes(node_bodies, node_ids))
+        if edges:
+            sources = [e['source'] for e in edges]
+            targets = [e['target'] for e in edges]
+            properties = [e['properties'] for e in edges]
+            sg_db.atomic(db_path, sg_db.connect_many_nodes(sources, targets, properties))
+            
+        return JSONResponse(content={"uuid": graph_uuid}, status_code=200)
+        
     except Exception as e:
-        print(f"Error saving graph data: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to save graph data: {str(e)}")
+        print(f"Error saving graph: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save graph: {str(e)}")
+
+@file_router.get('/graph/{username}/{graph_uuid}')
+async def get_graph_by_uuid(username: str, graph_uuid: str):
+    """
+    Retrieve a graph by its UUID
+    Returns the graph data in JSON format
+    """
+    try:
+        db_path = get_db_path(username)
+        
+        # Find nodes for this graph
+        clause = sg_db._generate_clause('graph_uuid')
+        nodes = sg_db.atomic(db_path, sg_db.find_nodes([clause], (graph_uuid,)))
+        
+        # Build node mapping
+        node_map = {n['node_id']: n for n in nodes}
+        
+        # Find edges and build connections
+        for node in nodes:
+            connections = sg_db.atomic(db_path, sg_db.get_connections(node['node_id']))
+            node['nexts'] = [edge[1] for edge in connections]
+            
+        # Remove internal fields
+        for node in nodes:
+            node.pop('graph_uuid', None)
+            node.pop('node_id', None)
+            
+        return JSONResponse(content={"nodes": nodes}, status_code=200)
+        
+    except Exception as e:
+        print(f"Error retrieving graph: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve graph: {str(e)}")
+
+@file_router.get('/graphs/{username}')
+async def list_graphs(username: str):
+    """
+    List all graph UUIDs for a user
+    Returns a list of UUIDs
+    """
+    try:
+        db_path = get_db_path(username)
+        
+        # Get unique graph UUIDs
+        clause = sg_db._generate_clause('graph_uuid', tree=True)
+        graphs = sg_db.atomic(db_path, sg_db.find_nodes(
+            [clause],
+            ('%',),
+            tree_query=True,
+            key='graph_uuid'
+        ))
+        
+        # Extract unique UUIDs
+        uuids = list(set(g['graph_uuid'] for g in graphs))
+        
+        return JSONResponse(content={"uuids": uuids}, status_code=200)
+        
+    except Exception as e:
+        print(f"Error listing graphs: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list graphs: {str(e)}")
 
 # Route to handle cleaning the user's workspace
 @file_router.post('/clean-cache/{username}')
