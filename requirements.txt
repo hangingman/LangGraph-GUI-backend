@@ -5,9 +5,8 @@ langgraph
 fastapi
 uvicorn
 httpx
-
 openai
 pyyaml
 python-multipart
-
 langchain-ollama
+simple-graph-sqlite==2.1.0

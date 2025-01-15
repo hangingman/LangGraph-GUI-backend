@@ -1,11 +1,18 @@
 FROM python:3.12-slim
 
-# Change the timezone to UTC+8
-RUN ln -sf /usr/share/zoneinfo/Asia/Singapore /etc/localtime
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Singapore
 
-RUN apt-get update && apt-get upgrade -y
+# Set timezone
+RUN ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime
 
-RUN apt-get install -y cron && apt-get clean
+RUN apt-get update && \
+    apt-get -y upgrade && \
+    apt-get -y install --no-install-recommends \
+    cron \
+    sqlite3 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
