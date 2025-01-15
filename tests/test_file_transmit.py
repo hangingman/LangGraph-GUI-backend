@@ -3,6 +3,8 @@ from fastapi.testclient import TestClient
 from FileTransmit import file_router
 import os
 import shutil
+import json
+import pathlib
 
 @pytest.fixture
 def client():
@@ -47,6 +49,26 @@ def test_graph_operations(client):
     #response = client.get('/graphs/testuser')
     #assert response.status_code == 200
     #assert graph_uuid == response.json()['uuid']
+
+def test_save_example_graph(client):
+    file = pathlib.Path("tests/test_data/example.json")
+    with open(file) as f:
+        example_graph_data = json.load(f)
+
+    response = client.post('/graph/testuser', json=example_graph_data)
+    assert response.status_code == 200
+    graph_uuid = response.json()['uuid']
+    
+    response = client.get(f'/graph/testuser/{graph_uuid}')
+    assert response.status_code == 200
+    
+    saved_nodes = response.json()['nodes']
+    assert len(saved_nodes) == len(example_graph_data['nodes'])
+    
+    for saved_node, original_node in zip(saved_nodes, example_graph_data['nodes']):
+        assert saved_node['name'] == original_node['name']
+        assert saved_node['type'] == original_node['type']
+        assert saved_node['description'] == original_node['description']
 
 def test_clean_cache(client):
     files = [('files', ('test.txt', b'hello world'))]

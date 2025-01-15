@@ -1,0 +1,52 @@
+{
+    "nodes": [
+        {
+            "uniq_id": "uniq_id_12",
+            "nexts": [],
+            "type": "CONDITION",
+            "name": "Check Roll",
+            "description": "see final one 'need_roll'\nif see need_roll is True give me True \nelse if see need_roll is false, give me False",
+            "tool": "",
+            "true_next": "uniq_id_11",
+            "false_next": "uniq_id_10",
+            "ext": {
+                "pos_x": 611,
+                "pos_y": -237.20000000000005,
+                "width": 312,
+                "height": 326,
+                "info": ""
+            }
+        },
+        {
+            "uniq_id": "uniq_id_11",
+            "nexts": [],
+            "type": "ACTION",
+            "name": "True Case",
+            "description": "",
+            "tool": "",
+            "ext": {
+                "pos_x": 1011,
+                "pos_y": -37.200000000000045,
+                "width": 200,
+                "height": 100,
+                "info": ""
+            }
+        },
+        {
+            "uniq_id": "uniq_id_10",
+            "nexts": [],
+            "type": "ACTION",
+            "name": "False Case",
+            "description": "",
+            "tool": "",
+            "ext": {
+                "pos_x": 1011,
+                "pos_y": -437.20000000000005,
+                "width": 200,
+                "height": 100,
+                "info": ""
+            }
+        }
+    ],
+    "node_counter": 3
+}
